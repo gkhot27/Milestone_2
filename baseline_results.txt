@@ -1,0 +1,4 @@
+policy                avg cost ($)   miss rate  fast hrs  avg return
+charge immediately            6.23        0.0%      4.11       -6.64
+time-of-use rule              3.61        6.6%      1.11       -6.34
+oracle (DP)                   2.47        0.0%      2.02       -2.68

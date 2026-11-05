@@ -1,0 +1,12 @@
+[PASS] gymnasium check_env: spaces, reset/step signatures, seeding
+[PASS] reset(): plug-in 17-21h, departure 6-8am, battery 20.0-50.0%, h0 in [9,15], counters zeroed
+[PASS] early departure rate = 10.1% (expected ~10%)
+[PASS] reset(seed) is reproducible
+[PASS] step(): off +0%, slow +6.17%, fast +12.33%; reward = -price*kWh - lambda*1[fast]; h decrements
+[PASS] battery capped at 100% (only 1.8 kWh billed when 97% -> 100%)
+[PASS] episode ends at actual departure (incl. early exits); final reward includes -M*shortfall
+[PASS] price chain: P(high) evening=0.52 vs night=0.04;  P(low) night=0.74 vs evening=0.11
+[PASS] state_index maps (h,b,p) one-to-one onto 0..1007 for the Q-table
+[PASS] oracle DP value == realized env return on 200 episodes
+
+All environment tests passed.
