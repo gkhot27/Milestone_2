@@ -18,12 +18,19 @@ hours early, which the agent cannot observe in its state.
 Smart-EV-charging/
 ├── ev_env.py            # Custom Gymnasium environment (the simulation)
 ├── baselines.py         # Three baselines: charge-immediately, time-of-use, oracle (DP)
+├── agents.py            # Tabular Q-learning and SARSA agents        (Milestone 3)
+├── train.py             # Training loop + periodic greedy validation (Milestone 3)
+├── evaluate.py          # Test-set comparison of agents vs. baselines (Milestone 3)
+├── plot_results.py      # Milestone 3 figures                         (Milestone 3)
 ├── test_env.py          # 10 sanity checks for the environment
-├── make_figures.py      # Generates report figures into figures/
+├── make_figures.py      # Milestone 2 figures
+├── requirements.txt     # Python dependencies
 ├── baseline_results.txt # Saved output from baselines.py
 ├── test_output.txt      # Saved output from test_env.py
-├── figures/             # Generated PNG figures
-└── report/              # Progress report (Khot_Gururaj_milestone2.pdf)
+├── results/             # Learned Q-tables, training logs, eval_results.csv/.txt
+├── logs/                # Console output of each training run
+├── figures/             # Milestone 2 figures; figures/milestone3/ for Milestone 3
+└── report/              # Milestone report PDFs
 ```
 
 ### Core Files
@@ -47,6 +54,23 @@ Smart-EV-charging/
   baselines), `fig2_step_code.png` (the `step()` source), and
   `fig3_test_output.png` (test + baseline results).
 
+- **`agents.py`** — `QLearningAgent` and `SarsaAgent`. Both keep a `1008 × 3`
+  Q-table, pick actions epsilon-greedily (random tie-breaking), and do a one-step
+  TD update. The only difference is the bootstrap target: `max_a' Q(s', a')`
+  for Q-learning vs. `Q(s', a')` for the action SARSA actually takes next.
+
+- **`train.py`** — trains one agent for one seed. Epsilon decays linearly from
+  1.0 to 0.05 over the first 80% of episodes and alpha from 0.1 to 0.01. Every
+  2,000 episodes the greedy policy is evaluated on 500 fixed validation nights
+  (this does not change the training run).
+
+- **`evaluate.py`** — runs every policy (random, charge-immediately,
+  time-of-use, Q-learning, SARSA, oracle) on the same 5,000 held-out test
+  nights and writes `results/eval_results.csv`.
+
+- **`plot_results.py`** — Milestone 3 figures: agent code, training loop,
+  learning curves, and the baseline comparison.
+
 ---
 
 ## Dependencies
@@ -67,7 +91,7 @@ Create a virtual environment and install the dependencies:
 cd Smart-EV-charging
 python3 -m venv .venv
 source .venv/bin/activate
-pip install numpy gymnasium matplotlib pygments
+pip install -r requirements.txt
 ```
 
 ---
@@ -79,11 +103,10 @@ environment is activated first (`source .venv/bin/activate`).
 
 ### 1. Run the environment tests
 
-Runs 10 sanity checks over the environment and the oracle, and saves the output
-to `test_output.txt` (used by `make_figures.py`).
+Runs 10 sanity checks over the environment and the oracle.
 
 ```bash
-python3 test_env.py | tee test_output.txt
+python3 test_env.py
 ```
 
 Expected output (see `test_output.txt` for the saved version):
@@ -105,11 +128,10 @@ All environment tests passed.
 
 ### 2. Run the baselines
 
-Evaluates all three baselines over 5,000 episodes each, and saves the output
-to `baseline_results.txt` (used by `make_figures.py`).
+Evaluates all three baselines over 5,000 episodes each.
 
 ```bash
-python3 baselines.py | tee baseline_results.txt
+python3 baselines.py
 ```
 
 Expected output (see `baseline_results.txt`):
@@ -124,26 +146,65 @@ oracle (DP)                   2.47        0.0%      2.02       -2.68
 The oracle achieves the lowest cost ($2.47) with zero misses — this is the
 upper bound that the RL agents (Q-learning and SARSA) will aim to close.
 
-### 3. Generate the report figures
 
-Creates `fig1_episodes.png`, `fig2_step_code.png`, and `fig3_test_output.png`
-in the `figures/` directory. Requires Matplotlib and Pygments.
+### 3. Train the RL agents (Milestone 3)
+
+Each run takes about 1 minute on a laptop. The report uses 3 seeds per algorithm:
 
 ```bash
-python3 make_figures.py
+for algo in qlearning sarsa; do
+  for seed in 0 1 2; do
+    python3 train.py --algo $algo --seed $seed | tee logs/train_${algo}_seed${seed}.txt
+  done
+done
 ```
 
-The script reads `test_output.txt` and `baseline_results.txt`, so run steps 1
-and 2 first (with `| tee ...`) to make sure those files reflect the current code.
-The scripts only print to the terminal, so running them without `tee` does not
-update the files.
+Each run saves `results/<algo>_seed<k>_Q.npy` (the Q-table) and
+`results/<algo>_seed<k>_log.npz` (per-episode returns + validation curve).
+Useful flags: `--episodes` (default 100000), `--alpha` / `--alpha-end`
+(0.1 → 0.01), `--gamma` (1.0), `--eps-start` / `--eps-end` (1.0 → 0.05),
+`--decay-frac` (0.8). Runs are fully reproducible from `--seed`.
 
-### 4. Read the report
+The trained Q-tables are already in `results/`, so you can skip straight to
+step 4.
 
-The compiled progress report is `report/Khot_Gururaj_milestone2.pdf`. Its figures are
-the ones produced in step 3.
+### 4. Evaluate against the baselines
 
----
+```bash
+python3 evaluate.py | tee results/eval_results.txt
+```
+
+All policies are tested on the same 5,000 nights (seeds 1,000,000+), which are
+never used in training (seeds 0–299,999) or validation (900,000+):
+
+```
+policy                 avg cost ($)  miss rate  miss (early)  fast hrs  avg return
+Random policy                  5.70       9.9%         16.0%      3.92      -11.03
+Charge immediately             6.28       0.0%          0.0%      4.14       -6.69
+Time-of-use rule               3.65       6.9%         67.6%      1.15       -6.30
+Q-learning (3 seeds)           2.85       0.5%          3.4%      3.06       -3.43
+SARSA (3 seeds)                3.36       0.6%          1.5%      1.96       -4.32
+Oracle (DP)                    2.48       0.0%          0.0%      2.06       -2.69
+```
+
+"miss (early)" is the miss rate on just the nights where the driver left early.
+
+### 5. Make the Milestone 3 figures
+
+```bash
+python3 plot_results.py      # -> figures/milestone3/
+```
+
+## RL Hyperparameters
+
+| Parameter | Value |
+|---|---|
+| Episodes per run | 100,000 (one night each) |
+| Learning rate α | 0.1 → 0.01 (linear decay) |
+| Discount γ | 1.0 (episodic; the objective is total cost per night) |
+| Exploration ε | 1.0 → 0.05 over the first 80% of episodes, then 0.05 |
+| Q-table init | zeros (optimistic, since all rewards are ≤ 0) |
+| Seeds | 3 per algorithm |
 
 ## Key Design Parameters
 
@@ -173,6 +234,8 @@ the ones produced in step 3.
 
 ## Status
 
-Completed so far: the environment, three baselines, and the test suite. The
-remaining work (Q-learning, SARSA, learning curves, λ sweep, early-departure
-comparison, and Q-table heatmaps) is outlined in the progress report.
+- **Milestone 2:** environment, three baselines, and the test suite.
+- **Milestone 3:** Q-learning and SARSA implemented, trained (3 seeds each), and
+  evaluated. Both beat every baseline on cost while staying under a 1% miss rate.
+- **Next:** λ sweep (cost vs. battery wear), early departures on/off,
+  Q-table heatmaps, and the volatile-price generalization test.
